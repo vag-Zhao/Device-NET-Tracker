@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>设备监控面板</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/element-plus"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
+</head>
+
+<body>
+    <div id="particles-js"></div>
+    
+    <div id="app">
+        <div class="dashboard-header">
+            <div class="dashboard-title">
+                <div class="title-icon">
+                    <i class="el-icon-monitor"></i>
+                </div>
+                <span class="title-text">设备监控面板</span>
+            </div>
+            <div class="dashboard-controls">
+                <div class="auto-refresh-switch">
+                    <span class="auto-refresh-label">自动刷新</span>
+                    <el-switch
+                        v-model="autoRefresh"
+                        @change="handleAutoRefreshChange"
+                        active-color="#3b82f6"
+                        inactive-color="#4b5563">
+                    </el-switch>
+                </div>
+                <div class="refresh-container">
+                    <el-button 
+                        class="refresh-button"
+                        @click="fetchDevices">
+                        <i class="el-icon-refresh"></i>
+                        <span>刷新</span>
+                    </el-button>
+                    <el-icon v-if="loading" class="loading-spinner is-loading">
+                        <Loading />
+                    </el-icon>
+                </div>
+            </div>
+        </div>
+
+        <div class="dashboard-content">
+            <div class="device-grid">
+                <div v-for="device in devices" 
+                     :key="device.serialNumber" 
+                     class="device-card"
+                     :class="{ 'offline': !device.isOnline }"
+                     @click="showDeviceDetail(device)">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span>{{ device.serialNumber }}</span>
+                            <el-tag size="small" :type="device.isOnline ? 'success' : 'danger'">
+                                {{ device.isOnline ? '在线' : '离线' }}
+                            </el-tag>
+                        </div>
+                        <div class="platform-info">
+                            {{ device.platform }}
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        最后更新: {{ formatDate(device.lastSeen) }}
+                    </div>
+                </div>
+                <div v-if="devices.length === 0" class="empty-state">
+                    <el-empty description="暂无设备连接"></el-empty>
+                </div>
+            </div>
+        </div>
+
+        <!-- 设备详情弹窗 -->
+        <el-dialog
+            v-model="dialogVisible"
+            :title="currentDevice?.serialNumber"
+            width="700px"
+            class="detail-dialog"
+            :close-on-click-modal="true"
+            :close-on-press-escape="true"
+            :show-close="false"
+            @closed="handleDialogClosed"
+            destroy-on-close>
+            <!-- 弹窗内容 -->
+            <template #header>
+                <div class="dialog-header">
+                    <span class="dialog-title">{{ currentDevice?.serialNumber }}</span>
+                </div>
+            </template>
+            
+            <template v-if="currentDevice">
+                <!-- 设备状态头部 -->
+                <div class="device-status-header">
+                    <div class="device-platform">
+                        <i class="el-icon-monitor"></i>
+                        <span>{{ currentDevice.platform }}</span>
+                    </div>
+                    <div class="device-last-seen">
+                        最后更新: {{ formatDate(currentDevice.lastSeen) }}
+                    </div>
+                </div>
+                
+                <!-- 网络接口信息 -->
+                <div v-if="currentDevice.networkInfo" class="network-interfaces">
+                    <!-- WiFi接口 -->
+                    <template v-for="(info, name) in currentDevice.networkInfo" :key="name">
+                        <div v-if="info.type === 'wifi'" class="info-section">
+                            <div class="info-header">
+                                <span class="interface-name">{{ name }}</span>
+                                <span class="interface-type">WiFi</span>
+                            </div>
+                            <div v-for="iface in info.interfaces" 
+                                 :key="iface.address"
+                                 class="info-content">
+                                <template v-if="iface.family === 'IPv4' && !iface.internal">
+                                    <div>
+                                        <span>IP 地址</span>
+                                        <span>{{ iface.address }}</span>
+                                    </div>
+                                    <div>
+                                        <span>子网掩码</span>
+                                        <span>{{ iface.netmask }}</span>
+                                    </div>
+                                    <div v-if="currentDevice.isOnline" class="wifi-section">
+                                        <div class="ssid-row">
+                                            <span class="ssid-label">SSID</span>
+                                            <span class="ssid-value">
+                                                <i class="el-icon-connection wifi-signal-icon"></i>
+                                                {{ info.ssid }}
+                                                <span class="auth-type-tag" v-if="info.authType">
+                                                    {{ info.authType }}
+                                                </span>
+                                            </span>
+                                        </div>
+                                        <div class="wifi-actions">
+                                            <el-button 
+                                                type="warning" 
+                                                size="small"
+                                                @click="disconnectWiFi(currentDevice.serialNumber)"
+                                                :loading="currentDevice.loading">
+                                                {{ info.authType === 'open' ? '断开公共 WiFi' : '断开并删除 WiFi 配置' }}
+                                            </el-button>
+                                        </div>
+                                        <div class="wifi-note" v-if="info.authType === 'open'">
+                                            <el-alert
+                                                type="info"
+                                                :closable="false"
+                                                show-icon>
+                                                <p>这是一个公共 WiFi 网络，断开后将禁用自动重连</p>
+                                            </el-alert>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- 其他接口 -->
+                    <template v-for="(info, name) in currentDevice.networkInfo" :key="name">
+                        <div v-if="info.type !== 'wifi'" class="info-section">
+                            <div class="info-header">
+                                <span class="interface-name">{{ name }}</span>
+                                <span class="interface-type">
+                                    {{ info.type === 'ethernet' ? '以太网' : '其他' }}
+                                </span>
+                            </div>
+                            <div v-for="iface in info.interfaces" 
+                                 :key="iface.address"
+                                 class="info-content">
+                                <template v-if="iface.family === 'IPv4' && !iface.internal">
+                                    <div>
+                                        <span>IP 地址</span>
+                                        <span>{{ iface.address }}</span>
+                                    </div>
+                                    <div>
+                                        <span>子网掩码</span>
+                                        <span>{{ iface.netmask }}</span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+        </el-dialog>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
