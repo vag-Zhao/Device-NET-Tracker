@@ -221,7 +221,7 @@ npm install -g pm2
 pm2 start dist/app.js --name et-server
 ```
 
-![image-20250218194206089](C:\Users\vag33\AppData\Roaming\Typora\typora-user-images\image-20250218194206089.png)
+![PM2 运行状态](https://free4.yunpng.top/2025/02/18/67b474df024de.png)
 
 #### 客户端部署
 
