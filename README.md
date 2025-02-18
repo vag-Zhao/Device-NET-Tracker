@@ -220,7 +220,8 @@ npm run build
 npm install -g pm2
 pm2 start dist/app.js --name et-server
 ```
-image-20250218194206089.png
+
+![pm2-status](./pm2-status.png)
 
 #### 客户端部署
 
